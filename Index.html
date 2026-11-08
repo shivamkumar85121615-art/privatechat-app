@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="hi">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Private Chat & Video Call App</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: #0f172a; color: #fff; margin: 0; padding: 10px; display: flex; flex-direction: column; align-items: center; justify-content: center; min-height: 100vh; }
+        .card { background: #1e293b; padding: 20px; border-radius: 12px; width: 100%; max-width: 450px; box-shadow: 0 8px 16px rgba(0,0,0,0.4); text-align: center; }
+        input { width: 90%; padding: 12px; margin: 10px 0; border: none; border-radius: 6px; background: #334155; color: #fff; font-size: 16px; }
+        button { background: #2563eb; color: white; border: none; padding: 12px 20px; border-radius: 6px; cursor: pointer; width: 100%; font-size: 16px; font-weight: bold; margin-top: 5px; }
+        button:hover { background: #1d4ed8; }
+        #chatRoom, #callRoom { display: none; text-align: left; }
+        .chat-box { height: 250px; background: #0f172a; border-radius: 6px; padding: 10px; overflow-y: auto; margin-bottom: 10px; border: 1px solid #334155; }
+        .message { margin: 8px 0; padding: 8px; border-radius: 6px; background: #334155; font-size: 14px; }
+        video { width: 48%; background: #000; border-radius: 6px; margin-top: 10px; }
+        .video-container { display: flex; justify-content: space-between; }
+    </style>
+    <!-- PeerJS Library for Video/Audio Calls -->
+    <script src="https://unpkg.com/peerjs@1.4.7/dist/peerjs.min.js"></script>
+</head>
+<body>
+
+    <!-- होम स्क्रीन -->
+    <div class="card" id="homeScreen">
+        <h2>🔒 Secure P2P Call & Chat</h2>
+        <p>बातचीत शुरू करने के लिए अपना या दोस्त का रूम आईडी दर्ज करें</p>
+        <input type="text" id="peerIdInput" placeholder="अपना नाम या रूम आईडी लिखें...">
+        <button onclick="connectRoom()">कनेक्ट करें</button>
+    </div>
+
+    <!-- चैट और कॉल स्क्रीन -->
+    <div class="card" id="callRoom">
+        <h3 id="roomTitle"></h3>
+        <div class="video-container">
+            <video id="localVideo" autoplay muted playsinline></video>
+            <video id="remoteVideo" autoplay playsinline></video>
+        </div>
+        <button onclick="startVideoCall()" style="background: #16a34a; margin-top: 15px;">वीडियो कॉल शुरू करें</button>
+
+        <h4 style="margin-top: 20px;">लाइव चैट</h4>
+        <div class="chat-box" id="chatBox"></div>
+        <input type="text" id="msgInput" placeholder="संदेश लिखें...">
+        <button onclick="sendMessage()">संदेश भेजें</button>
+    </div>
+
+    <script>
+        let peer, conn, localStream, currentCall;
+
+        function connectRoom() {
+            const id = document.getElementById('peerIdInput').value.trim();
+            if(!id) {
+                alert('कृपया कोई आईडी दर्ज करें!');
+                return;
+            }
+
+            // PeerJS से कनेक्ट हो रहे हैं
+            peer = new Peer(id);
+
+            peer.on('open', (assignedId) => {
+                document.getElementById('homeScreen').style.display = 'none';
+                document.getElementById('callRoom').style.display = 'block';
+                document.getElementById('roomTitle').innerText = 'Connected as: ' + assignedId;
+                
+                // दूसरे यूजर से कनेक्ट होने के लिए कनेक्शन सेट करें
+                let friendId = prompt("अपने दोस्त की रूम आईडी दर्ज करें जिससे कनेक्ट करना है:");
+                if(friendId) {
+                    conn = peer.connect(friendId);
+                    setupConnection();
+                }
+            });
+
+            peer.on('connection', (incomingConn) => {
+                conn = incomingConn;
+                setupConnection();
+                alert('किसी ने आपसे कनेक्ट किया है!');
+            });
+
+            peer.on('call', (call) => {
+                navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then((stream) => {
+                    localStream = stream;
+                    document.getElementById('localVideo').srcObject = stream;
+                    call.answer(stream);
+                    call.on('stream', (remoteStream) => {
+                        document.getElementById('remoteVideo').srcObject = remoteStream;
+                    });
+                    currentCall = call;
+                }).catch(err => alert('कैमरा/माइक्रोफ़ोन की अनुमति नहीं मिली!'));
+            });
+        }
+
+        function setupConnection() {
+            conn.on('data', (data) => {
+                appendMessage('दोस्त: ' + data);
+            });
+        }
+
+        function sendMessage() {
+            const msg = document.getElementById('msgInput').value;
+            if(msg && conn) {
+                conn.send(msg);
+                appendMessage('आप: ' + msg);
+                document.getElementById('msgInput').value = '';
+            }
+        }
+
+        function appendMessage(text) {
+            const box = document.getElementById('chatBox');
+            box.innerHTML += `<div class="message">${text}</div>`;
+            box.scrollTop = box.scrollHeight;
+        }
+
+        function startVideoCall() {
+            let friendId = document.getElementById('peerIdInput').value; // या दोस्त की आईडी
+            navigator.mediaDevices.getUserMedia({ video: true, audio: true }).then((stream) => {
+                localStream = stream;
+                document.getElementById('localVideo').srcObject = stream;
+                
+                let targetId = prompt("जिसको कॉल करनी है उसकी आईडी लिखें:");
+                const call = peer.call(targetId, stream);
+                call.on('stream', (remoteStream) => {
+                    document.getElementById('remoteVideo').srcObject = remoteStream;
+                });
+                currentCall = call;
+            }).catch(err => alert('कैमरा एक्सेस करने में समस्या आई।'));
+        }
+    </script>
+</body>
+</html>
